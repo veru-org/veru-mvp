@@ -4,3 +4,4 @@ __pycache__/
 *.pyc
 app/uploads/
 app/reports/
+app/mock/

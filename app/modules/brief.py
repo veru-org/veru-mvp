@@ -10,7 +10,8 @@ from pydantic import BaseModel
 
 load_dotenv()
 
-MODELO = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+MODELO = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+MOCK_PATH = "app/mock/brief_baysi.json"
 _cliente = None
 
 
@@ -82,6 +83,7 @@ def formatear_requisitos(requisitos: list) -> str:
             lineas.append(f"- {r['texto']}{extra}")
     return "\n".join(lineas)
 
+
 def _subir(cliente, video_path, intentos=4):
     """Sube el video con reintentos ante cortes de red."""
     for i in range(intentos):
@@ -92,6 +94,7 @@ def _subir(cliente, video_path, intentos=4):
                 raise
             print(f"[reintento subida {i + 1}] {type(e).__name__}")
             time.sleep(2 * (i + 1))
+
 
 def _generar(cliente, archivo, requisitos, modelo, intentos=4):
     """Llama a Gemini con reintentos ante errores transitorios (503/429)."""
@@ -108,14 +111,31 @@ def _generar(cliente, archivo, requisitos, modelo, intentos=4):
                 ),
             )
         except Exception as e:
-            transitorio = "503" in str(e) or "429" in str(e)
+            msg = str(e)
+            # Cuota diaria agotada: reintentar no sirve
+            if "PerDay" in msg or "per day" in msg.lower():
+                raise RuntimeError(
+                    "Cuota diaria de Gemini agotada. Cambia de modelo/key "
+                    "o activa GEMINI_MOCK=1.") from e
+            transitorio = "503" in msg or "429" in msg
             if not transitorio or i == intentos - 1:
                 raise
             print(f"[reintento {i + 1}] {type(e).__name__}: error transitorio")
             time.sleep(3 * (i + 1))
 
 
+def _auditar_mock() -> dict:
+    with open(MOCK_PATH, encoding="utf-8") as f:
+        datos = json.load(f)
+    datos["modelo"] = "MOCK"
+    return datos
+
+
 def auditar_brief(video_path: str, requisitos: list) -> dict:
+    # Modo mock: no consume cuota de Gemini
+    if os.getenv("GEMINI_MOCK") == "1":
+        return _auditar_mock()
+
     inicio = time.time()
     tiempos = {}
     cliente = get_cliente()
@@ -144,4 +164,12 @@ def auditar_brief(video_path: str, requisitos: list) -> dict:
     datos["modelo"] = MODELO
     datos["tiempos"] = tiempos
     datos["tiempo_proceso_seg"] = round(time.time() - inicio, 1)
+
+    # Guardar la última respuesta real para usarla como mock
+    try:
+        os.makedirs(os.path.dirname(MOCK_PATH), exist_ok=True)
+        with open(MOCK_PATH, "w", encoding="utf-8") as f:
+            json.dump(datos, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
     return datos
