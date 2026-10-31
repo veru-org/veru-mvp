@@ -82,6 +82,16 @@ def formatear_requisitos(requisitos: list) -> str:
             lineas.append(f"- {r['texto']}{extra}")
     return "\n".join(lineas)
 
+def _subir(cliente, video_path, intentos=4):
+    """Sube el video con reintentos ante cortes de red."""
+    for i in range(intentos):
+        try:
+            return cliente.files.upload(file=video_path)
+        except Exception as e:
+            if i == intentos - 1:
+                raise
+            print(f"[reintento subida {i + 1}] {type(e).__name__}")
+            time.sleep(2 * (i + 1))
 
 def _generar(cliente, archivo, requisitos, modelo, intentos=4):
     """Llama a Gemini con reintentos ante errores transitorios (503/429)."""
@@ -110,7 +120,7 @@ def auditar_brief(video_path: str, requisitos: list) -> dict:
     tiempos = {}
     cliente = get_cliente()
 
-    archivo = cliente.files.upload(file=video_path)
+    archivo = _subir(cliente, video_path)
     tiempos["subida_seg"] = round(time.time() - inicio, 1)
     try:
         while archivo.state.name == "PROCESSING":

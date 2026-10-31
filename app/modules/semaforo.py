@@ -10,6 +10,13 @@ def _rango(ts):
     return f"{min(ts):.0f} s a {max(ts):.0f} s"
 
 
+def _es_requisito_visual(requisito: str) -> bool:
+    """Los requisitos de 'mostrar producto' no deben bajar a OBSERVADO
+    solo porque el modelo los marque como 'equivalente'."""
+    r = requisito.lower()
+    return "mostrar" in r or "producto" in r or "mercader" in r
+
+
 def auditar_video(url, video_path, requisitos):
     with ThreadPoolExecutor(max_workers=2) as ex:
         f_div = ex.submit(auditar_divulgacion, url=url, video_path=video_path)
@@ -33,7 +40,8 @@ def auditar_video(url, video_path, requisitos):
         if not p["cumple"]:
             rojo = True
             motivos.append(f"No cumple: {p['requisito']}.")
-        elif p["tipo_coincidencia"] == "equivalente":
+        elif (p["tipo_coincidencia"] == "equivalente"
+              and not _es_requisito_visual(p["requisito"])):
             amarillo = True
             motivos.append(
                 f"Cumple por equivalencia: {p['requisito']} (s {p['timestamp']}).")
