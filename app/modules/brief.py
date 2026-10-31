@@ -40,12 +40,24 @@ class Punto(BaseModel):
     evidencia: str
 
 
+class Hallazgo(BaseModel):
+    texto: str
+    timestamp: float | None
+
+
 class Resultado(BaseModel):
     transcripcion: list[Segmento]
     puntos: list[Punto]
     producto_visible: bool
     timestamps_producto: list[float]
     resumen: str
+    afirmaciones_salud: list[Hallazgo]
+    afirmaciones_objetivas: list[Hallazgo]
+    promociones: list[Hallazgo]
+    promocion_con_condiciones: bool | None
+    comparaciones_competidor: list[Hallazgo]
+    precios_mostrados: list[Hallazgo]
+    precios_indican_igv: bool | None
 
 
 # ---------- Prompt ----------
@@ -68,7 +80,18 @@ Reglas:
 - Los tiempos van en segundos. Si no se puede determinar, usa null.
 - "producto_visible" indica si el producto de la marca se ve en algún momento;
   "timestamps_producto" lista solo el segundo de inicio y el de fin del tramo
-  donde se ve (máximo 2 valores por tramo)."""
+  donde se ve (máximo 2 valores por tramo).
+- "afirmaciones_salud": afirmaciones de salud, adelgazamiento o resultados
+  garantizados (por ejemplo "cura", "adelgaza", "elimina arrugas").
+- "afirmaciones_objetivas": afirmaciones objetivas verificables como "el mejor",
+  "100% natural", "número uno".
+- "promociones": ofertas o descuentos mencionados; "promocion_con_condiciones"
+  es true si se informan condiciones, vigencia y stock, false si no, null si
+  no hay promociones.
+- "comparaciones_competidor": comparaciones con otras marcas o denigración.
+- "precios_mostrados": precios dichos o mostrados; "precios_indican_igv" es
+  true si aclaran que incluyen IGV, false si no, null si no hay precios.
+- Las listas van vacías si no hay nada. No inventes hallazgos."""
 
 
 def formatear_requisitos(requisitos: list) -> str:
@@ -112,7 +135,6 @@ def _generar(cliente, archivo, requisitos, modelo, intentos=4):
             )
         except Exception as e:
             msg = str(e)
-            # Cuota diaria agotada: reintentar no sirve
             if "PerDay" in msg or "per day" in msg.lower():
                 raise RuntimeError(
                     "Cuota diaria de Gemini agotada. Cambia de modelo/key "
@@ -131,7 +153,7 @@ def _auditar_mock() -> dict:
     return datos
 
 
-def auditar_brief(video_path: str, requisitos: list) -> dict:
+def auditar_brief(video_path: str, requisitos: list, guardar_mock: bool = True) -> dict:
     # Modo mock: no consume cuota de Gemini
     if os.getenv("GEMINI_MOCK") == "1":
         return _auditar_mock()
@@ -165,11 +187,12 @@ def auditar_brief(video_path: str, requisitos: list) -> dict:
     datos["tiempos"] = tiempos
     datos["tiempo_proceso_seg"] = round(time.time() - inicio, 1)
 
-    # Guardar la última respuesta real para usarla como mock
-    try:
-        os.makedirs(os.path.dirname(MOCK_PATH), exist_ok=True)
-        with open(MOCK_PATH, "w", encoding="utf-8") as f:
-            json.dump(datos, f, ensure_ascii=False, indent=2)
-    except Exception:
-        pass
+    # Guardar la última respuesta real como mock (se puede desactivar)
+    if guardar_mock:
+        try:
+            os.makedirs(os.path.dirname(MOCK_PATH), exist_ok=True)
+            with open(MOCK_PATH, "w", encoding="utf-8") as f:
+                json.dump(datos, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
     return datos

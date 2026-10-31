@@ -1,0 +1,20 @@
+{
+  "pais": "PE",
+  "autoridad": "INDECOPI",
+  "estado": "BORRADOR - pendiente de validación legal",
+  "reglas": [
+    {"id": "PE-01", "norma": "DL 1044 (publicidad)", "descripcion": "El contenido declara que es publicidad.", "verificador": "divulgacion_presente", "gravedad": "rechaza"},
+    {"id": "PE-02", "norma": "DL 1044 (publicidad)", "descripcion": "La divulgación es clara (no solo coincidencia aproximada).", "verificador": "divulgacion_clara", "gravedad": "observa"},
+    {"id": "PE-03", "norma": "DL 1044 - Veracidad", "descripcion": "Las afirmaciones objetivas (\"el mejor\", \"100% natural\", salud) tienen sustento.", "verificador": "sin_afirmaciones_objetivas", "gravedad": "observa"},
+    {"id": "PE-04", "norma": "DL 1044 - Legalidad", "descripcion": "Si hay promoción, se informan condiciones, vigencia y stock.", "verificador": "promocion_con_condiciones", "gravedad": "observa"},
+    {"id": "PE-05", "norma": "DL 1044 - Comparativa", "descripcion": "No hay comparaciones con competidores ni denigración.", "verificador": "sin_comparacion_competidor", "gravedad": "observa"},
+    {"id": "PE-06", "norma": "Ley 29571 - Información", "descripcion": "Si se muestran precios, indican si incluyen IGV.", "verificador": "precios_con_igv", "gravedad": "observa"},
+    {"id": "PE-07", "norma": "Ley 29571 - Idoneidad", "descripcion": "El producto mostrado coincide con el producto de la campaña.", "verificador": "producto_visible", "gravedad": "rechaza"}
+  ],
+  "declaracion_marca": [
+    "Cuenta con Libro de Reclamaciones accesible",
+    "Responde reclamos en el plazo legal",
+    "Los precios publicados incluyen IGV",
+    "Cuenta con sustento técnico de sus afirmaciones"
+  ]
+}

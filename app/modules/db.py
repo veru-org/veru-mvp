@@ -30,7 +30,8 @@ def guardar_auditoria(registro: dict, resultado: dict, user_id: str | None = Non
         "producto_detectado": resultado["producto_visible"],
         "brief_cumplido": resultado["brief"]["cumple_brief"],
         "resultado": {"puntos": resultado["brief"]["puntos"],
-                      "rango_producto": resultado.get("rango_producto")},
+                      "rango_producto": resultado.get("rango_producto"),
+                      "compliance": resultado.get("compliance")},
     }
     if user_id:
         fila["user_id"] = user_id

@@ -9,6 +9,7 @@ COLORES = {
 }
 VERDE = (46, 160, 67)
 ROJO = (200, 50, 50)
+AMBAR = (200, 130, 0)
 
 
 def _t(texto) -> str:
@@ -58,7 +59,8 @@ def generar_pdf(resultado: dict, marca: str, url: str, salida: str) -> str:
     pdf.cell(0, 6, _t(f"Resultado: {div['veredicto']}"), new_x="LMARGIN", new_y="NEXT")
     for h in div["hallazgos"]:
         ts = f" (s {h['timestamp']})" if h.get("timestamp") is not None else ""
-        pdf.multi_cell(0, 6, _t(f"- '{h['etiqueta']}' en {h['fuente']} ({h['coincidencia']}){ts}"),
+        fuente = {"descripcion": "descripción", "titulo": "título"}.get(h["fuente"], h["fuente"])
+        pdf.multi_cell(0, 6, _t(f"- '{h['etiqueta']}' en {fuente} ({h['coincidencia']}){ts}"),
                        new_x="LMARGIN", new_y="NEXT")
     if not div["hallazgos"]:
         pdf.cell(0, 6, _t("- No se encontró etiqueta en descripción ni en pantalla."),
@@ -89,6 +91,34 @@ def generar_pdf(resultado: dict, marca: str, url: str, salida: str) -> str:
     pdf.cell(0, 6, _t(f"Visible: {visible} ({rango})"), new_x="LMARGIN", new_y="NEXT")
     pdf.ln(3)
 
+    # Checklist de compliance
+    comp = resultado["compliance"]
+    _titulo(pdf, f"Checklist {comp['autoridad']} ({comp['pais']})")
+    pdf.set_font("Helvetica", "I", 8)
+    pdf.cell(0, 5, _t(f"Estado de las reglas: {comp['estado_reglas']}"),
+             new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 10)
+    simbolo = {"cumple": ("OK", VERDE), "no_cumple": ("FALLA", ROJO),
+               "revisar": ("REVISAR", AMBAR)}
+    for it in comp["items"]:
+        txt, color = simbolo[it["estado"]]
+        pdf.set_text_color(*color)
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.cell(24, 6, f"[{txt}]")
+        pdf.set_text_color(0, 0, 0)
+        pdf.set_font("Helvetica", "", 10)
+        pdf.multi_cell(0, 6, _t(f"{it['id']}: {it['descripcion']} - {it['detalle']}"),
+                       new_x="LMARGIN", new_y="NEXT")
+    if comp.get("declaracion_marca"):
+        pdf.ln(2)
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.cell(0, 6, _t("A declarar por la marca (no verificable en video):"),
+                 new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 9)
+        for d in comp["declaracion_marca"]:
+            pdf.multi_cell(0, 5, _t(f"- {d}"), new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(3)
+
     # Transcripción
     _titulo(pdf, "Transcripción")
     for s in resultado["brief"]["transcripcion"]:
@@ -101,7 +131,9 @@ def generar_pdf(resultado: dict, marca: str, url: str, salida: str) -> str:
     pdf.multi_cell(0, 4, _t(
         "Nota: este reporte es una ayuda automatizada. APROBADO indica que la etiqueta "
         "publicitaria está presente, no que cumpla por sí solo la normativa vigente. "
-        "Los casos OBSERVADO requieren revisión humana."),
+        "Las reglas del checklist son un borrador pendiente de validación legal. "
+        "Los casos OBSERVADO requieren revisión humana. Los tiempos de la "
+        "transcripción son orientativos."),
                    new_x="LMARGIN", new_y="NEXT")
     modelo = resultado["brief"].get("modelo", "-")
     pdf.cell(0, 4, _t(f"Modelo de análisis: {modelo} | "
