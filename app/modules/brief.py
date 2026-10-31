@@ -1,10 +1,12 @@
 import json
 import os
 import time
+from typing import Literal
 
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
+from pydantic import BaseModel
 
 load_dotenv()
 
@@ -22,36 +24,76 @@ def get_cliente():
     return _cliente
 
 
+# ---------- Esquema estricto de la respuesta ----------
+class Segmento(BaseModel):
+    inicio: float
+    fin: float
+    texto: str
+
+
+class Punto(BaseModel):
+    requisito: str
+    cumple: bool
+    tipo_coincidencia: Literal["literal", "equivalente", "ninguna"]
+    timestamp: float | None
+    evidencia: str
+
+
+class Resultado(BaseModel):
+    transcripcion: list[Segmento]
+    puntos: list[Punto]
+    producto_visible: bool
+    timestamps_producto: list[float]
+    resumen: str
+
+
+# ---------- Prompt ----------
 PROMPT = """Eres un auditor de contenido de marketing de creadores.
-Analiza el video (imagen y audio) y compáralo con el brief de la campaña.
+Analiza el video (imagen y audio) y evalúa EXACTAMENTE los requisitos listados,
+ni más ni menos. No agregues requisitos propios.
 
-BRIEF:
-{brief}
+REQUISITOS:
+{requisitos}
 
-Responde SOLO con JSON válido, sin texto extra, con esta estructura:
-{{
-  "transcripcion": [{{"inicio": 0.0, "fin": 0.0, "texto": "..."}}],
-  "cumple_brief": true,
-  "puntos_brief": [
-    {{"punto": "requisito del brief", "cumple": true,
-      "timestamp": 0.0, "evidencia": "qué se dice o se ve"}}
-  ],
-  "producto_visible": true,
-  "timestamps_producto": [0.0],
-  "resumen": "una frase con el motivo del veredicto"
-}}
-Los tiempos van en segundos. Si algo no se puede determinar, usa null."""
+Reglas:
+- Un requisito con sinónimos aceptados se cumple si se menciona o se ve
+  cualquiera de ellos.
+- tipo_coincidencia: "literal" si aparece la palabra exacta del requisito,
+  "equivalente" si aparece uno de los sinónimos o un concepto claramente
+  equivalente, "ninguna" si no cumple.
+- Para requisitos visuales (mostrar producto), cumple si el producto o la
+  mercadería de la marca es visible en pantalla, aunque sea en un plano
+  general; indica el segundo en "timestamp".
+- Los tiempos van en segundos. Si no se puede determinar, usa null.
+- "producto_visible" indica si el producto de la marca se ve en algún momento;
+  "timestamps_producto" lista esos segundos."""
 
 
-def _generar(cliente, archivo, brief, modelo, intentos=4):
+def formatear_requisitos(requisitos: list) -> str:
+    """Acepta strings o dicts {"texto": "...", "sinonimos": [...]}."""
+    lineas = []
+    for r in requisitos:
+        if isinstance(r, str):
+            lineas.append(f"- {r}")
+        else:
+            sin = r.get("sinonimos") or []
+            extra = f" (sinónimos aceptados: {', '.join(sin)})" if sin else ""
+            lineas.append(f"- {r['texto']}{extra}")
+    return "\n".join(lineas)
+
+
+def _generar(cliente, archivo, requisitos, modelo, intentos=4):
     """Llama a Gemini con reintentos ante errores transitorios (503/429)."""
+    prompt = PROMPT.format(requisitos=formatear_requisitos(requisitos))
     for i in range(intentos):
         try:
             return cliente.models.generate_content(
                 model=modelo,
-                contents=[archivo, PROMPT.format(brief=brief)],
+                contents=[archivo, prompt],
                 config=types.GenerateContentConfig(
-                    response_mime_type="application/json", temperature=0.1
+                    response_mime_type="application/json",
+                    response_schema=Resultado,
+                    temperature=0.0,
                 ),
             )
         except Exception as e:
@@ -61,7 +103,7 @@ def _generar(cliente, archivo, brief, modelo, intentos=4):
             time.sleep(3 * (i + 1))
 
 
-def auditar_brief(video_path: str, brief: str) -> dict:
+def auditar_brief(video_path: str, requisitos: list) -> dict:
     inicio = time.time()
     cliente = get_cliente()
 
@@ -73,7 +115,7 @@ def auditar_brief(video_path: str, brief: str) -> dict:
         if archivo.state.name == "FAILED":
             raise RuntimeError("Gemini no pudo procesar el video")
 
-        resp = _generar(cliente, archivo, brief, MODELO)
+        resp = _generar(cliente, archivo, requisitos, MODELO)
     finally:
         # Privacidad: no dejar el video almacenado en Gemini
         try:
@@ -82,5 +124,6 @@ def auditar_brief(video_path: str, brief: str) -> dict:
             pass
 
     datos = json.loads(resp.text)
+    datos["cumple_brief"] = all(p["cumple"] for p in datos["puntos"])
     datos["tiempo_proceso_seg"] = round(time.time() - inicio, 1)
     return datos
