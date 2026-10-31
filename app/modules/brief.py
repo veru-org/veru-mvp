@@ -66,7 +66,8 @@ Reglas:
   general; indica el segundo en "timestamp".
 - Los tiempos van en segundos. Si no se puede determinar, usa null.
 - "producto_visible" indica si el producto de la marca se ve en algún momento;
-  "timestamps_producto" lista esos segundos."""
+  "timestamps_producto" lista solo el segundo de inicio y el de fin del tramo
+  donde se ve (máximo 2 valores por tramo)."""
 
 
 def formatear_requisitos(requisitos: list) -> str:
@@ -100,22 +101,27 @@ def _generar(cliente, archivo, requisitos, modelo, intentos=4):
             transitorio = "503" in str(e) or "429" in str(e)
             if not transitorio or i == intentos - 1:
                 raise
+            print(f"[reintento {i + 1}] {type(e).__name__}: error transitorio")
             time.sleep(3 * (i + 1))
 
 
 def auditar_brief(video_path: str, requisitos: list) -> dict:
     inicio = time.time()
+    tiempos = {}
     cliente = get_cliente()
 
     archivo = cliente.files.upload(file=video_path)
+    tiempos["subida_seg"] = round(time.time() - inicio, 1)
     try:
         while archivo.state.name == "PROCESSING":
             time.sleep(1)
             archivo = cliente.files.get(name=archivo.name)
+        tiempos["procesado_seg"] = round(time.time() - inicio, 1)
         if archivo.state.name == "FAILED":
             raise RuntimeError("Gemini no pudo procesar el video")
 
         resp = _generar(cliente, archivo, requisitos, MODELO)
+        tiempos["respuesta_seg"] = round(time.time() - inicio, 1)
     finally:
         # Privacidad: no dejar el video almacenado en Gemini
         try:
@@ -125,5 +131,7 @@ def auditar_brief(video_path: str, requisitos: list) -> dict:
 
     datos = json.loads(resp.text)
     datos["cumple_brief"] = all(p["cumple"] for p in datos["puntos"])
+    datos["modelo"] = MODELO
+    datos["tiempos"] = tiempos
     datos["tiempo_proceso_seg"] = round(time.time() - inicio, 1)
     return datos
