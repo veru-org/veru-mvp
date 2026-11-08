@@ -1,5 +1,7 @@
+import ast
 import json
 import os
+import re
 import shutil
 import uuid
 
@@ -53,6 +55,34 @@ def _descargar_video(url: str, destino: str):
         ydl.download([url])
 
 
+def _parsear_requisitos(valor) -> list:
+    """Acepta una lista JSON (["a", "b"]), una lista con comillas simples o texto
+    plano con un requisito por línea o separados por punto y coma."""
+    if _vacio(valor):
+        return REQUISITOS_DEFECTO
+    texto = valor.strip().replace("\u201c", '"').replace("\u201d", '"').replace("\u201e", '"')
+    try:
+        datos = json.loads(texto)
+    except json.JSONDecodeError:
+        datos = None
+        if texto.startswith("["):
+            try:
+                datos = ast.literal_eval(texto)
+            except (ValueError, SyntaxError):
+                datos = None
+        if datos is None:
+            partes = [p.strip(" -\u2022\t\"") for p in re.split(r"[;\n]+", texto)]
+            datos = [p for p in partes if p]
+    if isinstance(datos, str):
+        datos = [datos]
+    if (not isinstance(datos, list) or not datos
+            or not all(isinstance(x, str) and x.strip() for x in datos)):
+        raise HTTPException(
+            400, 'requisitos debe ser una lista de textos, por ejemplo: '
+                 '["Mostrar el logo", "Mencionar el descuento"].')
+    return [x.strip() for x in datos]
+
+
 @app.get("/")
 def root():
     return {"message": "VERU API funcionando"}
@@ -90,10 +120,7 @@ async def audit(
     if not url and not video:
         raise HTTPException(400, "Envía un link (url) o un archivo MP4 (video).")
 
-    try:
-        reqs = REQUISITOS_DEFECTO if _vacio(requisitos) else json.loads(requisitos)
-    except json.JSONDecodeError:
-        raise HTTPException(400, "requisitos debe ser JSON válido.")
+    reqs = _parsear_requisitos(requisitos)
 
     audit_id = uuid.uuid4().hex[:8]
     ruta_video = os.path.join(UPLOADS, f"{audit_id}.mp4")
